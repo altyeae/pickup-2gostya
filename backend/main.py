@@ -30,6 +30,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Простой health check эндпоинт для Render.com
+@app.get("/health")
+async def health_check():
+    """Простой health check для Render.com"""
+    return {"status": "healthy", "message": "Backend is running"}
+
 # Настройки безопасности
 SECRET_KEY = "your-secret-key-here"  # В продакшене использовать переменную окружения
 ALGORITHM = "HS256"

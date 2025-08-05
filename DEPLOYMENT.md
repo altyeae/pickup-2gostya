@@ -18,7 +18,7 @@
 - **План**: Free
 - **Build Command**: `pip install -r backend/requirements.txt` (монорепо) или `pip install -r requirements.txt` (отдельный репозиторий)
 - **Start Command**: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT` (монорепо) или `uvicorn main:app --host 0.0.0.0 --port $PORT` (отдельный репозиторий)
-- **Health Check**: `/api/settings`
+- **Health Check**: `/health`
 
 ### 2. Фронтенд сервис (`pickup-2gostya`)
 - **Тип**: Static Site
@@ -77,8 +77,9 @@
 ## Проверка деплоя
 
 ### Проверка бэкенда:
-- Откройте `https://pickup-portcomfort-backend.onrender.com/api/settings`
-- Должен вернуться JSON ответ (возможно с ошибкой авторизации, что нормально)
+- Откройте `https://pickup-portcomfort-backend.onrender.com/health`
+- Должен вернуться JSON ответ: `{"status": "healthy", "message": "Backend is running"}`
+- Для проверки API: `https://pickup-portcomfort-backend.onrender.com/api/settings` (требует авторизации)
 
 ### Проверка фронтенда:
 - Откройте `https://pickup-2gostya.onrender.com`

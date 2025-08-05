@@ -11,7 +11,7 @@ services:
         sync: false
       - key: CORS_ORIGIN
         value: https://pickup-2gostya.onrender.com
-    healthCheckPath: /api/settings
+    healthCheckPath: /health
 
   # Фронтенд сервис
   - type: web
