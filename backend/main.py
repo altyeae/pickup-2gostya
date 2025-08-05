@@ -14,40 +14,21 @@ from google.oauth2.service_account import Credentials
 import re
 import xml.etree.ElementTree as ET
 import logging
-from fastapi.staticfiles import StaticFiles
+
 
 app = FastAPI(title="XLS Import API", version="1.0.0")
 
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://pickup-2gostya-frontend.onrender.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Монтируем статические файлы фронтенда (если папка существует)
-import os
-if os.path.exists("build/static"):
-    app.mount("/static", StaticFiles(directory="build/static"), name="static")
-
-# Обработчик для корневого маршрута
-@app.get("/")
-async def serve_index():
-    """Обработчик для корневого маршрута"""
-    try:
-        if os.path.exists("build/index.html"):
-            with open("build/index.html", "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
-        else:
-            return HTMLResponse(content="<h1>Приложение загружается...</h1>")
-    except Exception as e:
-        return HTMLResponse(content=f"<h1>Ошибка загрузки: {str(e)}</h1>")
-
-
-
-
 
 # Настройки безопасности
 SECRET_KEY = "your-secret-key-here"  # В продакшене использовать переменную окружения
@@ -632,19 +613,7 @@ async def save_settings(
     save_settings_to_file(settings)
     return {"message": "Настройки сохранены"}
 
-# Обработчик для всех остальных маршрутов (SPA fallback) - должен быть последним
-@app.get("/{full_path:path}")
-async def serve_spa(full_path: str):
-    """Обработчик для SPA - возвращает index.html для всех не-API маршрутов"""
-    # Возвращаем index.html для всех остальных маршрутов
-    try:
-        if os.path.exists("build/index.html"):
-            with open("build/index.html", "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
-        else:
-            return HTMLResponse(content="<h1>Приложение загружается...</h1>")
-    except Exception as e:
-        return HTMLResponse(content=f"<h1>Ошибка загрузки: {str(e)}</h1>")
+# Убираем SPA fallback роут, так как фронтенд теперь отдельный сервис
 
 if __name__ == "__main__":
     import uvicorn

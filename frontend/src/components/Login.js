@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import API_CONFIG from '../config';
 
 const Login = ({ onLogin }) => {
   const [username, setUsername] = useState('');
@@ -13,7 +14,7 @@ const Login = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      const response = await axios.post('/api/login', {
+      const response = await axios.post(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.login}`, {
         username,
         password
       });

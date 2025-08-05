@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import API_CONFIG from '../config';
 
 const Dashboard = ({ onLogout }) => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -70,7 +71,7 @@ const Dashboard = ({ onLogout }) => {
     formData.append('file', selectedFile);
 
     try {
-      const response = await axios.post('/api/upload', formData, {
+      const response = await axios.post(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.upload}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -97,7 +98,7 @@ const Dashboard = ({ onLogout }) => {
   const trackProcessingStatus = async (taskId) => {
     const checkStatus = async () => {
       try {
-        const response = await axios.get(`/api/status/${taskId}`);
+        const response = await axios.get(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.status}/${taskId}`);
         const status = response.data;
         
         setProcessingStatus(status);

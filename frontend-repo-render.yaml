@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: pickup-2gostya
+    env: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://pickup-portcomfort-backend.onrender.com 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import API_CONFIG from '../config';
 
 const Settings = ({ onLogout }) => {
   const [settings, setSettings] = useState({});
@@ -18,7 +19,7 @@ const Settings = ({ onLogout }) => {
 
   const loadSettings = useCallback(async () => {
     try {
-      const response = await axios.get('/api/settings');
+      const response = await axios.get(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.settings}`);
       const loadedSettings = response.data;
       
       // Инициализируем настройки для всех городов
@@ -67,7 +68,7 @@ const Settings = ({ onLogout }) => {
     setSuccess('');
 
     try {
-      await axios.post('/api/settings', settings, {
+      await axios.post(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.settings}`, settings, {
         headers: { 'Content-Type': 'application/json' }
       });
       setSuccess('Настройки сохранены успешно');
