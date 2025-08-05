@@ -27,18 +27,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Монтируем статические файлы фронтенда
-app.mount("/static", StaticFiles(directory="build/static"), name="static")
+# Монтируем статические файлы фронтенда (если папка существует)
+import os
+if os.path.exists("build/static"):
+    app.mount("/static", StaticFiles(directory="build/static"), name="static")
 
 # Обработчик для корневого маршрута
 @app.get("/")
 async def serve_index():
     """Обработчик для корневого маршрута"""
     try:
-        with open("build/index.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
+        if os.path.exists("build/index.html"):
+            with open("build/index.html", "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+        else:
+            return HTMLResponse(content="<h1>Приложение загружается...</h1>")
+    except Exception as e:
+        return HTMLResponse(content=f"<h1>Ошибка загрузки: {str(e)}</h1>")
 
 
 
@@ -633,10 +638,13 @@ async def serve_spa(full_path: str):
     """Обработчик для SPA - возвращает index.html для всех не-API маршрутов"""
     # Возвращаем index.html для всех остальных маршрутов
     try:
-        with open("build/index.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
+        if os.path.exists("build/index.html"):
+            with open("build/index.html", "r", encoding="utf-8") as f:
+                return HTMLResponse(content=f.read())
+        else:
+            return HTMLResponse(content="<h1>Приложение загружается...</h1>")
+    except Exception as e:
+        return HTMLResponse(content=f"<h1>Ошибка загрузки: {str(e)}</h1>")
 
 if __name__ == "__main__":
     import uvicorn
