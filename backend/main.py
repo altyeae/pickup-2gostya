@@ -8,20 +8,17 @@ import uuid
 from datetime import datetime, timedelta
 import asyncio
 from typing import Dict, List, Optional, Tuple
-import xlrd
 import gspread
 from google.oauth2.service_account import Credentials
 import re
 import xml.etree.ElementTree as ET
 import logging
-from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
-
-app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="frontend")
-
 app = FastAPI(title="XLS Import API", version="1.0.0")
+
+# Монтируем статические файлы фронтенда
+app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="frontend")
 
 # Настройка CORS
 app.add_middleware(
