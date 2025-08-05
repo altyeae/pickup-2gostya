@@ -14,10 +14,8 @@ services:
     healthCheckPath: /api/settings
 
   # Фронтенд сервис
-  - type: web
+  - type: static
     name: pickup-2gostya
-    env: static
-    plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/build
     envVars:
