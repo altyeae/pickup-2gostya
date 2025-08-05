@@ -8,7 +8,6 @@ const Dashboard = ({ onLogout }) => {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [processingStatus, setProcessingStatus] = useState(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Список городов (используется в других компонентах)
   // eslint-disable-next-line no-unused-vars
@@ -64,7 +63,6 @@ const Dashboard = ({ onLogout }) => {
 
     setUploading(true);
     setError('');
-    setSuccess('');
     setUploadStatus('Идет загрузка файла...');
     setProcessingStatus(null);
 
@@ -79,7 +77,6 @@ const Dashboard = ({ onLogout }) => {
       });
 
       setUploadStatus('Файл загружен успешно');
-      setSuccess('Скрипт выполнен');
       
       // Начинаем отслеживать статус обработки
       if (response.data.task_id) {
@@ -140,7 +137,6 @@ const Dashboard = ({ onLogout }) => {
           <h2>Загрузка файла</h2>
           
           {error && <div className="error">{error}</div>}
-          {success && <div className="success">{success}</div>}
           
           <div 
             className="file-upload-area"

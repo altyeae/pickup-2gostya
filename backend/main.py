@@ -40,20 +40,7 @@ async def serve_index():
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
 
-# Обработчик для всех остальных маршрутов (SPA fallback)
-@app.get("/{full_path:path}")
-async def serve_spa(full_path: str):
-    """Обработчик для SPA - возвращает index.html для всех не-API маршрутов"""
-    # Пропускаем API и статические файлы
-    if full_path.startswith("api/") or full_path.startswith("static/"):
-        raise HTTPException(status_code=404, detail="Not found")
-    
-    # Возвращаем index.html для всех остальных маршрутов
-    try:
-        with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
-            return HTMLResponse(content=f.read())
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
+
 
 
 
@@ -141,14 +128,35 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 def get_google_sheets_client():
     """Получает клиент для работы с Google Sheets"""
     try:
+        print("DEBUG: Создаем клиент Google Sheets")
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
         ]
-        credentials = Credentials.from_service_account_file('service-account.json', scopes=scopes)
-        return gspread.authorize(credentials)
+        print(f"DEBUG: Используем scopes: {scopes}")
+        
+        # Сначала пробуем получить из переменной окружения
+        google_credentials = os.getenv('GOOGLE_CREDENTIALS')
+        if google_credentials:
+            print("DEBUG: Используем credentials из переменной окружения")
+            import json
+            credentials_dict = json.loads(google_credentials)
+            credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
+        else:
+            print("DEBUG: Используем файл service-account.json")
+            credentials = Credentials.from_service_account_file('service-account.json', scopes=scopes)
+        
+        print(f"DEBUG: Учетные данные созданы: {credentials.service_account_email}")
+        
+        client = gspread.authorize(credentials)
+        print("DEBUG: Клиент Google Sheets создан успешно")
+        return client
     except FileNotFoundError:
+        print("DEBUG: Файл service-account.json не найден")
         raise Exception("Файл service-account.json не найден")
+    except Exception as e:
+        print(f"DEBUG: Ошибка при создании клиента: {str(e)}")
+        raise Exception(f"Ошибка при создании клиента Google Sheets: {str(e)}")
 
 def extract_sheet_id_from_url(url: str) -> str:
     """Извлекает ID таблицы из URL"""
@@ -579,6 +587,9 @@ async def upload_file(
         "success": []
     }
     
+    print(f"DEBUG: Создана задача {task_id}")
+    print(f"DEBUG: Всего задач: {len(task_status)}")
+    
     # Запускаем фоновую задачу
     background_tasks.add_task(process_file_task, task_id, file_path)
     
@@ -590,9 +601,14 @@ async def get_task_status(
     current_user: str = Depends(get_current_user)
 ):
     """Получение статуса обработки задачи"""
+    print(f"DEBUG: Запрос статуса для задачи {task_id}")
+    print(f"DEBUG: Доступные задачи: {list(task_status.keys())}")
+    
     if task_id not in task_status:
+        print(f"DEBUG: Задача {task_id} не найдена")
         raise HTTPException(status_code=404, detail="Задача не найдена")
     
+    print(f"DEBUG: Возвращаем статус для задачи {task_id}: {task_status[task_id]}")
     return task_status[task_id]
 
 @app.get("/api/settings")
@@ -611,7 +627,16 @@ async def save_settings(
     save_settings_to_file(settings)
     return {"message": "Настройки сохранены"}
 
-
+# Обработчик для всех остальных маршрутов (SPA fallback) - должен быть последним
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Обработчик для SPA - возвращает index.html для всех не-API маршрутов"""
+    # Возвращаем index.html для всех остальных маршрутов
+    try:
+        with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
 
 if __name__ == "__main__":
     import uvicorn
