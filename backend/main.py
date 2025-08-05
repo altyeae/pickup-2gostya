@@ -28,14 +28,14 @@ app.add_middleware(
 )
 
 # Монтируем статические файлы фронтенда
-app.mount("/static", StaticFiles(directory="../frontend/build/static"), name="static")
+app.mount("/static", StaticFiles(directory="build/static"), name="static")
 
 # Обработчик для корневого маршрута
 @app.get("/")
 async def serve_index():
     """Обработчик для корневого маршрута"""
     try:
-        with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
+        with open("build/index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
@@ -633,7 +633,7 @@ async def serve_spa(full_path: str):
     """Обработчик для SPA - возвращает index.html для всех не-API маршрутов"""
     # Возвращаем index.html для всех остальных маршрутов
     try:
-        with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
+        with open("build/index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: pickup-portcomfort
+    env: python
+    plan: free
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GOOGLE_CREDENTIALS
+        sync: false 
