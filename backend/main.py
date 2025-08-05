@@ -27,35 +27,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Монтируем статические файлы фронтенда (но не для API)
-@app.middleware("http")
-async def static_files_middleware(request, call_next):
-    """Middleware для обработки статических файлов"""
-    # Если это API запрос, пропускаем
-    if request.url.path.startswith("/api/"):
-        return await call_next(request)
-    
-    # Для всех остальных запросов возвращаем статические файлы
+# Монтируем статические файлы фронтенда
+app.mount("/static", StaticFiles(directory="../frontend/build/static"), name="static")
+
+# Обработчик для корневого маршрута
+@app.get("/")
+async def serve_index():
+    """Обработчик для корневого маршрута"""
     try:
-        if request.url.path == "/":
-            file_path = "../frontend/build/index.html"
-        else:
-            file_path = f"../frontend/build{request.url.path}"
-        
-        if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
-        else:
-            # Если файл не найден, возвращаем index.html для SPA
-            with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
-    except Exception:
-        # В случае ошибки возвращаем index.html
-        try:
-            with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
-        except Exception:
-            return await call_next(request)
+        with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+
+# Обработчик для всех остальных маршрутов (SPA fallback)
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Обработчик для SPA - возвращает index.html для всех не-API маршрутов"""
+    # Пропускаем API и статические файлы
+    if full_path.startswith("api/") or full_path.startswith("static/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    # Возвращаем index.html для всех остальных маршрутов
+    try:
+        with open("../frontend/build/index.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
 
 
 
