@@ -1,0 +1,236 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f5f5f5;
+}
+
+:root {
+  --color-primary: #6c757d;
+  --color-primary-dark: #545b62;
+  --color-secondary: #6c757d;
+  --color-secondary-dark: #545b62;
+  --color-success: #28a745;
+  --color-error: #dc3545;
+  --color-bg: #f5f5f5;
+  --color-card: #fff;
+  --color-border: #e0e0e0;
+  --color-header: #333;
+  --color-table-header: #f8f9fa;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.login-card {
+  max-width: 400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.card {
+  background: var(--color-card);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid var(--color-border);
+}
+
+.btn, .btn-secondary {
+  background: var(--color-secondary);
+  color: #fff;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background 0.2s;
+  outline: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.btn:hover, .btn:focus, .btn-secondary:hover, .btn-secondary:focus {
+  background: var(--color-secondary-dark);
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--color-header);
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  font-size: 15px;
+  background: #fafbfc;
+  transition: border 0.2s;
+  box-sizing: border-box;
+}
+
+.form-group input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.error {
+  color: var(--color-error);
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 12px;
+  border-radius: 5px;
+  margin-bottom: 18px;
+}
+
+.success {
+  color: var(--color-success);
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  padding: 12px;
+  border-radius: 5px;
+  margin-bottom: 18px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background: #e9ecef;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.3s ease;
+}
+
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.settings-table th,
+.settings-table td {
+  border: 1px solid var(--color-border);
+  padding: 12px;
+  text-align: left;
+}
+
+.settings-table th {
+  background: var(--color-table-header);
+  font-weight: 700;
+}
+
+.settings-table input {
+  width: 100%;
+  padding: 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 15px;
+}
+
+.status-processing {
+  color: var(--color-secondary);
+}
+
+/* Стили для этапов обработки */
+.stages-container {
+  margin: 15px 0;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.stages-container h4 {
+  margin: 0 0 10px 0;
+  color: var(--color-header);
+  font-size: 16px;
+}
+
+.stage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #e9ecef;
+  font-size: 14px;
+}
+
+.stage-item:last-child {
+  border-bottom: none;
+}
+
+.stage-message {
+  flex: 1;
+  color: var(--color-header);
+}
+
+.stage-spinner {
+  animation: spin 1s linear infinite;
+  font-size: 16px;
+}
+
+.stage-check {
+  color: var(--color-success);
+  font-size: 16px;
+}
+
+.stage-error {
+  color: var(--color-error);
+  font-size: 16px;
+}
+
+.stage-pending {
+  opacity: 0.6;
+}
+
+.stage-processing {
+  font-weight: 500;
+}
+
+.stage-completed {
+  font-weight: 500;
+}
+
+.stage-failed {
+  font-weight: 500;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  background: #f5f5f5;
+}
+::-webkit-scrollbar-thumb {
+  background: #e0e0e0;
+  border-radius: 4px;
+} 
