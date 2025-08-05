@@ -22,7 +22,6 @@
 
 ### 2. Фронтенд сервис (`pickup-2gostya`)
 - **Тип**: Static Site
-- **План**: Free
 - **Build Command**: `cd frontend && npm install && npm run build` (монорепо) или `npm install && npm run build` (отдельный репозиторий)
 - **Static Publish Path**: `frontend/build` (монорепо) или `build` (отдельный репозиторий)
 
