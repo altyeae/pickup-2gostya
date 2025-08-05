@@ -10,7 +10,8 @@ const Dashboard = ({ onLogout }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Список городов
+  // Список городов (используется в других компонентах)
+  // eslint-disable-next-line no-unused-vars
   const cities = [
     'Балашиха', 'Железнодорожный', 'Жуковский', 'Ивантеевка', 'Казань',
     'Королев', 'Люберцы', 'Мытищи', 'Ногинск', 'Пушкино',

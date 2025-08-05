@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 
@@ -10,23 +10,13 @@ const Settings = ({ onLogout }) => {
   const [success, setSuccess] = useState('');
 
   // Список городов
-  const cities = [
+  const cities = useMemo(() => [
     'Балашиха', 'Железнодорожный', 'Жуковский', 'Ивантеевка', 'Казань',
     'Королев', 'Люберцы', 'Мытищи', 'Ногинск', 'Пушкино',
     'Раменское', 'Сергиев Посад', 'Фрязино', 'Щелково', 'Электросталь'
-  ];
+  ], []);
 
-  useEffect(() => {
-    // Настройка axios для отправки токена
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    }
-    
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const response = await axios.get('/api/settings');
       const loadedSettings = response.data;
@@ -52,7 +42,17 @@ const Settings = ({ onLogout }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cities]);
+
+  useEffect(() => {
+    // Настройка axios для отправки токена
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    }
+    
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSettingChange = (city, value) => {
     setSettings(prev => ({
