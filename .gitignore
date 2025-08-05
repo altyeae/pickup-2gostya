@@ -44,7 +44,6 @@ backend/temp_*.xls
 # Frontend
 frontend/node_modules/
 frontend/.env
-frontend/build/
 frontend/.cache/
 
 # Logs
