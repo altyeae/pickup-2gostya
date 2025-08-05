@@ -19,12 +19,19 @@ import logging
 app = FastAPI(title="XLS Import API", version="1.0.0")
 
 # Настройка CORS
+cors_origins = [
+    "http://localhost:3000",
+    "https://pickup-2gostya.onrender.com"
+]
+
+# Добавляем CORS_ORIGIN из переменной окружения, если она установлена
+cors_origin_env = os.getenv('CORS_ORIGIN')
+if cors_origin_env:
+    cors_origins.append(cors_origin_env)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://pickup-2gostya-frontend.onrender.com"
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,6 +42,18 @@ app.add_middleware(
 async def health_check():
     """Простой health check для Render.com"""
     return {"status": "healthy", "message": "Backend is running"}
+
+# Обработчик для OPTIONS запросов (CORS preflight)
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Обработчик для CORS preflight запросов"""
+    return {"message": "OK"}
+
+# Тестовый эндпоинт для проверки CORS
+@app.get("/api/test-cors")
+async def test_cors():
+    """Тестовый эндпоинт для проверки CORS"""
+    return {"message": "CORS работает!", "timestamp": datetime.now().isoformat()}
 
 # Настройки безопасности
 SECRET_KEY = "your-secret-key-here"  # В продакшене использовать переменную окружения

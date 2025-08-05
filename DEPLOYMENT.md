@@ -79,6 +79,7 @@
 ### Проверка бэкенда:
 - Откройте `https://pickup-portcomfort-backend.onrender.com/health`
 - Должен вернуться JSON ответ: `{"status": "healthy", "message": "Backend is running"}`
+- Для проверки CORS: `https://pickup-portcomfort-backend.onrender.com/api/test-cors`
 - Для проверки API: `https://pickup-portcomfort-backend.onrender.com/api/settings` (требует авторизации)
 
 ### Проверка фронтенда:
