@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, BackgroundTasks
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -17,9 +18,6 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="XLS Import API", version="1.0.0")
 
-# Монтируем статические файлы фронтенда
-app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="frontend")
-
 # Настройка CORS
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +26,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # Настройки безопасности
 SECRET_KEY = "your-secret-key-here"  # В продакшене использовать переменную окружения
@@ -582,6 +582,8 @@ async def save_settings(
     logging.info(f"Получены настройки: {settings}")
     save_settings_to_file(settings)
     return {"message": "Настройки сохранены"}
+
+
 
 if __name__ == "__main__":
     import uvicorn
