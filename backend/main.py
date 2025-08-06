@@ -14,6 +14,8 @@ from google.oauth2.service_account import Credentials
 import re
 import xml.etree.ElementTree as ET
 import logging
+import time
+from functools import lru_cache
 
 
 app = FastAPI(title="XLS Import API", version="1.0.0")
@@ -36,6 +38,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Глобальный кэш для клиента Google Sheets
+_google_client_cache = None
+_last_client_creation = 0
+CLIENT_CACHE_TTL = 300  # 5 минут
+
+# Настройки для работы с Google API
+GOOGLE_API_DELAY = float(os.getenv('GOOGLE_API_DELAY', '1.0'))  # Задержка между запросами в секундах
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))  # Максимальное количество попыток
+RETRY_DELAY = float(os.getenv('RETRY_DELAY', '2.0'))  # Задержка между попытками
 
 # Простой health check эндпоинт для Render.com
 @app.get("/health")
@@ -136,8 +148,23 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return username
 
 # Функции для работы с Google Sheets
+def clear_google_client_cache():
+    """Очищает кэш клиента Google Sheets"""
+    global _google_client_cache, _last_client_creation
+    _google_client_cache = None
+    _last_client_creation = 0
+    print("DEBUG: Кэш клиента Google Sheets очищен")
+
+@lru_cache(maxsize=1)
 def get_google_sheets_client():
     """Получает клиент для работы с Google Sheets"""
+    global _google_client_cache, _last_client_creation
+    current_time = time.time()
+    
+    if _google_client_cache and (current_time - _last_client_creation) < CLIENT_CACHE_TTL:
+        print("DEBUG: Возвращаем кэшированный клиент Google Sheets")
+        return _google_client_cache
+    
     try:
         print("DEBUG: Создаем клиент Google Sheets")
         scopes = [
@@ -161,6 +188,9 @@ def get_google_sheets_client():
         
         client = gspread.authorize(credentials)
         print("DEBUG: Клиент Google Sheets создан успешно")
+        
+        _google_client_cache = client
+        _last_client_creation = current_time
         return client
     except FileNotFoundError:
         print("DEBUG: Файл service-account.json не найден")
@@ -176,26 +206,59 @@ def extract_sheet_id_from_url(url: str) -> str:
         raise Exception("Неверный формат URL Google Sheets")
     return match.group(1)
 
+def create_or_replace_sheet_with_date(sheet_url: str, date_str: str) -> str:
+    """Создает новый лист с датой или заменяет существующий"""
+    for attempt in range(MAX_RETRIES):
+        try:
+            client = get_google_sheets_client()
+            sheet_id = extract_sheet_id_from_url(sheet_url)
+            spreadsheet = client.open_by_key(sheet_id)
+            
+            # Задержка между запросами
+            time.sleep(GOOGLE_API_DELAY)
+            
+            # Получаем все листы
+            worksheets = spreadsheet.worksheets()
+            if not worksheets:
+                raise Exception("В таблице нет листов")
+            
+            # Проверяем, существует ли уже лист с такой датой
+            existing_sheet = None
+            for worksheet in worksheets:
+                if worksheet.title == date_str:
+                    existing_sheet = worksheet
+                    break
+            
+            if existing_sheet:
+                print(f"DEBUG: Лист с датой {date_str} уже существует, удаляем его")
+                # Удаляем существующий лист
+                spreadsheet.del_worksheet(existing_sheet)
+                
+                # Задержка между запросами
+                time.sleep(GOOGLE_API_DELAY)
+            
+            # Копируем последний лист (который не является удаленным)
+            remaining_worksheets = spreadsheet.worksheets()
+            if not remaining_worksheets:
+                raise Exception("Нет доступных листов для копирования")
+            
+            last_sheet = remaining_worksheets[-1]
+            new_sheet = spreadsheet.duplicate_sheet(last_sheet.id, insert_sheet_index=len(remaining_worksheets))
+            new_sheet.update_title(date_str)
+            
+            print(f"DEBUG: Лист {date_str} создан/заменен успешно")
+            return date_str
+            
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                print(f"DEBUG: Попытка {attempt + 1} не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
+                time.sleep(RETRY_DELAY)
+            else:
+                raise Exception(f"Ошибка при создании/замене листа после {MAX_RETRIES} попыток: {str(e)}")
+
 def create_sheet_with_date(sheet_url: str, date_str: str) -> str:
-    """Создает новый лист с датой и возвращает его название"""
-    try:
-        client = get_google_sheets_client()
-        sheet_id = extract_sheet_id_from_url(sheet_url)
-        spreadsheet = client.open_by_key(sheet_id)
-        
-        # Получаем все листы и находим последний по дате
-        worksheets = spreadsheet.worksheets()
-        if not worksheets:
-            raise Exception("В таблице нет листов")
-        
-        # Копируем последний лист
-        last_sheet = worksheets[-1]
-        new_sheet = spreadsheet.duplicate_sheet(last_sheet.id, insert_sheet_index=len(worksheets))
-        new_sheet.update_title(date_str)
-        
-        return date_str
-    except Exception as e:
-        raise Exception(f"Ошибка при создании листа: {str(e)}")
+    """Создает новый лист с датой и возвращает его название (устаревшая функция)"""
+    return create_or_replace_sheet_with_date(sheet_url, date_str)
 
 def parse_date(date_str: str) -> Optional[datetime]:
     """Парсит дату в формате DD.MM.YYYY"""
@@ -315,73 +378,72 @@ def find_date_row_in_sheet(sheet, target_date: datetime) -> Optional[int]:
 
 def write_data_to_sheet(sheet_url: str, sheet_name: str, processed_data: Dict[datetime, Dict[str, float]]):
     """Записывает обработанные данные в Google Sheets"""
-    try:
-        print(f"DEBUG: Записываем данные в {sheet_name} для {len(processed_data)} дат")
-        
-        client = get_google_sheets_client()
-        sheet_id = extract_sheet_id_from_url(sheet_url)
-        spreadsheet = client.open_by_key(sheet_id)
-        sheet = spreadsheet.worksheet(sheet_name)
-        
-        # Получаем все значения из столбца B одним запросом
-        column_b = sheet.col_values(2)  # Столбец B = индекс 1
-        print(f"DEBUG: Получен столбец B с {len(column_b)} строками")
-        
-        # Подробная отладка столбца B
-        print("DEBUG: Содержимое столбца B:")
-        for i, value in enumerate(column_b[:20], 1):  # Показываем первые 20 строк
-            print(f"  Строка {i}: '{value}' (тип: {type(value)})")
-        
-        # Создаем словарь для быстрого поиска дат
-        date_to_row = {}
-        for row_idx, date_str in enumerate(column_b, start=1):
-            if not date_str:
-                continue
+    for attempt in range(MAX_RETRIES):
+        try:
+            print(f"DEBUG: Записываем данные в {sheet_name} для {len(processed_data)} дат (попытка {attempt + 1})")
             
-            print(f"DEBUG: Обрабатываем строку {row_idx}: '{date_str}'")
-            parsed_date = parse_date(date_str)
-            if parsed_date:
-                print(f"DEBUG: Успешно распарсили дату: {parsed_date.strftime('%d.%m.%Y')}")
-                date_to_row[parsed_date.date()] = row_idx
-            else:
-                print(f"DEBUG: Не удалось распарсить дату: '{date_str}'")
-        
-        print(f"DEBUG: Найдено {len(date_to_row)} дат в столбце B")
-        print(f"DEBUG: Доступные даты: {list(date_to_row.keys())}")
-        
-        # Подготавливаем данные для массового обновления
-        updates = []
-        
-        # Для каждой даты ищем строку и подготавливаем обновления
-        for date, data in processed_data.items():
-            target_date = date.date()
-            print(f"DEBUG: Ищем дату {target_date} (из {date.strftime('%d.%m.%Y')})")
-            if target_date in date_to_row:
-                row_idx = date_to_row[target_date]
-                print(f"DEBUG: Найдена строка {row_idx} для даты {date.strftime('%d.%m.%Y')}, записываем КН={data['kn']}, Доход={data['income']}")
+            client = get_google_sheets_client()
+            sheet_id = extract_sheet_id_from_url(sheet_url)
+            spreadsheet = client.open_by_key(sheet_id)
+            
+            # Задержка между запросами
+            time.sleep(GOOGLE_API_DELAY)
+            
+            sheet = spreadsheet.worksheet(sheet_name)
+            
+            # Получаем все значения из столбца B одним запросом
+            column_b = sheet.col_values(2)  # Столбец B = индекс 1
+            print(f"DEBUG: Получен столбец B с {len(column_b)} строками")
+            
+            # Задержка между запросами
+            time.sleep(GOOGLE_API_DELAY)
+            
+            # Создаем словарь для быстрого поиска дат
+            date_to_row = {}
+            for row_idx, date_str in enumerate(column_b, start=1):
+                if not date_str:
+                    continue
                 
-                # Добавляем обновления в список
-                updates.append({
-                    'range': f'E{row_idx}',
-                    'values': [[data['kn']]]
-                })
-                updates.append({
-                    'range': f'H{row_idx}',
-                    'values': [[data['income']]]
-                })
+                parsed_date = parse_date(date_str)
+                if parsed_date:
+                    date_to_row[parsed_date.date()] = row_idx
+            
+            print(f"DEBUG: Найдено {len(date_to_row)} дат в столбце B")
+            
+            # Подготавливаем данные для массового обновления
+            updates = []
+            
+            # Для каждой даты ищем строку и подготавливаем обновления
+            for date, data in processed_data.items():
+                target_date = date.date()
+                if target_date in date_to_row:
+                    row_idx = date_to_row[target_date]
+                    
+                    # Добавляем обновления в список
+                    updates.append({
+                        'range': f'E{row_idx}',
+                        'values': [[data['kn']]]
+                    })
+                    updates.append({
+                        'range': f'H{row_idx}',
+                        'values': [[data['income']]]
+                    })
+            
+            # Выполняем массовое обновление
+            if updates:
+                print(f"DEBUG: Выполняем {len(updates)} обновлений")
+                sheet.batch_update(updates)
             else:
-                print(f"DEBUG: Дата {date.strftime('%d.%m.%Y')} (дата: {target_date}) не найдена в столбце B")
-        
-        # Выполняем массовое обновление
-        if updates:
-            print(f"DEBUG: Выполняем {len(updates)} обновлений")
-            sheet.batch_update(updates)
-        else:
-            print("DEBUG: Нет данных для обновления")
+                print("DEBUG: Нет данных для обновления")
+            
+            return  # Успешно завершили
                 
-    except Exception as e:
-        print(f"DEBUG: Ошибка при записи данных: {str(e)}")
-        raise Exception(f"Ошибка при записи данных в таблицу: {str(e)}")
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                print(f"DEBUG: Попытка {attempt + 1} не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
+                time.sleep(RETRY_DELAY)
+            else:
+                raise Exception(f"Ошибка при записи данных в таблицу после {MAX_RETRIES} попыток: {str(e)}")
 
 def process_xls_data(data: List[List[str]], settings: Dict[str, str]) -> Dict[str, Dict[datetime, Dict[str, float]]]:
     """Обрабатывает данные XLS и группирует по городам"""
@@ -542,6 +604,11 @@ async def process_file_task(task_id: str, file_path: str):
             task_status[task_id]["progress"]["current"] = current_progress
             task_status[task_id]["errors"] = errors
             task_status[task_id]["success"] = success
+            
+            # Добавляем задержку между обработкой городов для избежания превышения квоты
+            if i < len(cities):  # Не делаем задержку после последнего города
+                print(f"DEBUG: Задержка {GOOGLE_API_DELAY * 2} сек перед обработкой следующего города")
+                time.sleep(GOOGLE_API_DELAY * 2)
         
         # Завершаем задачу
         task_status[task_id]["status"] = "completed"
@@ -637,6 +704,50 @@ async def save_settings(
     logging.info(f"Получены настройки: {settings}")
     save_settings_to_file(settings)
     return {"message": "Настройки сохранены"}
+
+@app.post("/api/clear-cache")
+async def clear_cache(current_user: str = Depends(get_current_user)):
+    """Очищает кэш клиента Google Sheets"""
+    clear_google_client_cache()
+    return {"message": "Кэш очищен"}
+
+@app.post("/api/clear-today-sheets")
+async def clear_today_sheets(current_user: str = Depends(get_current_user)):
+    """Удаляет все листы с сегодняшней датой во всех таблицах"""
+    try:
+        settings = load_settings()
+        date_str = datetime.now().strftime("%d%m%y")
+        
+        results = []
+        for city, sheet_url in settings.items():
+            try:
+                client = get_google_sheets_client()
+                sheet_id = extract_sheet_id_from_url(sheet_url)
+                spreadsheet = client.open_by_key(sheet_id)
+                
+                # Задержка между запросами
+                time.sleep(GOOGLE_API_DELAY)
+                
+                # Ищем лист с сегодняшней датой
+                worksheets = spreadsheet.worksheets()
+                for worksheet in worksheets:
+                    if worksheet.title == date_str:
+                        spreadsheet.del_worksheet(worksheet)
+                        results.append(f"✅ {city}: лист {date_str} удален")
+                        break
+                else:
+                    results.append(f"ℹ️ {city}: лист {date_str} не найден")
+                    
+            except Exception as e:
+                results.append(f"❌ {city}: ошибка - {str(e)}")
+        
+        return {
+            "message": f"Очистка листов с датой {date_str} завершена",
+            "results": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка при очистке листов: {str(e)}")
 
 # Убираем SPA fallback роут, так как фронтенд теперь отдельный сервис
 
