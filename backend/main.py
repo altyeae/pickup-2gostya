@@ -17,8 +17,24 @@ import logging
 import time
 from functools import lru_cache
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log', encoding='utf-8')
+    ]
+)
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="XLS Import API", version="1.0.0")
+app = FastAPI(
+    title="XLS Import API", 
+    version="1.0.0",
+    # Увеличиваем лимиты для загрузки больших файлов
+    docs_url=None,
+    redoc_url=None
+)
 
 # Настройка CORS
 cors_origins = [
@@ -53,7 +69,12 @@ RETRY_DELAY = float(os.getenv('RETRY_DELAY', '2.0'))  # Задержка меж�
 @app.get("/health")
 async def health_check():
     """Простой health check для Render.com"""
-    return {"status": "healthy", "message": "Backend is running"}
+    return {"status": "healthy", "message": "Backend is running", "timestamp": datetime.now().isoformat()}
+
+@app.get("/")
+async def root():
+    """Корневой эндпоинт для проверки доступности"""
+    return {"status": "ok", "message": "XLS Import API is running", "timestamp": datetime.now().isoformat()}
 
 # Обработчик для OPTIONS запросов (CORS preflight)
 @app.options("/{full_path:path}")
@@ -62,10 +83,7 @@ async def options_handler(full_path: str):
     return {"message": "OK"}
 
 # Тестовый эндпоинт для проверки CORS
-@app.get("/api/test-cors")
-async def test_cors():
-    """Тестовый эндпоинт для проверки CORS"""
-    return {"message": "CORS работает!", "timestamp": datetime.now().isoformat()}
+
 
 # Настройки безопасности
 SECRET_KEY = "your-secret-key-here"  # В продакшене использовать переменную окружения
@@ -142,10 +160,15 @@ security = HTTPBearer()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Получает текущего пользователя из токена"""
-    username = verify_token(credentials.credentials)
-    if username is None:
-        raise HTTPException(status_code=401, detail="Неверный токен")
-    return username
+    try:
+        username = verify_token(credentials.credentials)
+        if username is None:
+            logger.warning("Попытка доступа с неверным токеном")
+            raise HTTPException(status_code=401, detail="Неверный токен")
+        return username
+    except Exception as e:
+        logger.error(f"Ошибка при проверке токена: {str(e)}")
+        raise HTTPException(status_code=401, detail="Ошибка проверки токена")
 
 # Функции для работы с Google Sheets
 def clear_google_client_cache():
@@ -153,7 +176,7 @@ def clear_google_client_cache():
     global _google_client_cache, _last_client_creation
     _google_client_cache = None
     _last_client_creation = 0
-    print("DEBUG: Кэш клиента Google Sheets очищен")
+    logger.info("Кэш клиента Google Sheets очищен")
 
 @lru_cache(maxsize=1)
 def get_google_sheets_client():
@@ -162,41 +185,33 @@ def get_google_sheets_client():
     current_time = time.time()
     
     if _google_client_cache and (current_time - _last_client_creation) < CLIENT_CACHE_TTL:
-        print("DEBUG: Возвращаем кэшированный клиент Google Sheets")
         return _google_client_cache
     
     try:
-        print("DEBUG: Создаем клиент Google Sheets")
         scopes = [
             'https://www.googleapis.com/auth/spreadsheets',
             'https://www.googleapis.com/auth/drive'
         ]
-        print(f"DEBUG: Используем scopes: {scopes}")
         
         # Сначала пробуем получить из переменной окружения
         google_credentials = os.getenv('GOOGLE_CREDENTIALS')
         if google_credentials:
-            print("DEBUG: Используем credentials из переменной окружения")
             import json
             credentials_dict = json.loads(google_credentials)
             credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
         else:
-            print("DEBUG: Используем файл service-account.json")
             credentials = Credentials.from_service_account_file('service-account.json', scopes=scopes)
         
-        print(f"DEBUG: Учетные данные созданы: {credentials.service_account_email}")
-        
         client = gspread.authorize(credentials)
-        print("DEBUG: Клиент Google Sheets создан успешно")
         
         _google_client_cache = client
         _last_client_creation = current_time
         return client
     except FileNotFoundError:
-        print("DEBUG: Файл service-account.json не найден")
+        logger.error("Файл service-account.json не найден")
         raise Exception("Файл service-account.json не найден")
     except Exception as e:
-        print(f"DEBUG: Ошибка при создании клиента: {str(e)}")
+        logger.error(f"Ошибка при создании клиента Google Sheets: {str(e)}")
         raise Exception(f"Ошибка при создании клиента Google Sheets: {str(e)}")
 
 def extract_sheet_id_from_url(url: str) -> str:
@@ -230,7 +245,6 @@ def create_or_replace_sheet_with_date(sheet_url: str, date_str: str) -> str:
                     break
             
             if existing_sheet:
-                print(f"DEBUG: Лист с датой {date_str} уже существует, удаляем его")
                 # Удаляем существующий лист
                 spreadsheet.del_worksheet(existing_sheet)
                 
@@ -246,12 +260,11 @@ def create_or_replace_sheet_with_date(sheet_url: str, date_str: str) -> str:
             new_sheet = spreadsheet.duplicate_sheet(last_sheet.id, insert_sheet_index=len(remaining_worksheets))
             new_sheet.update_title(date_str)
             
-            print(f"DEBUG: Лист {date_str} создан/заменен успешно")
             return date_str
             
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
-                print(f"DEBUG: Попытка {attempt + 1} не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
+                logger.warning(f"Попытка {attempt + 1} не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
                 time.sleep(RETRY_DELAY)
             else:
                 raise Exception(f"Ошибка при создании/замене листа после {MAX_RETRIES} попыток: {str(e)}")
@@ -285,7 +298,6 @@ def parse_date(date_str: str) -> Optional[datetime]:
     except ValueError:
         pass
     
-    print(f"DEBUG: Не удалось распарсить дату: '{date_str}'")
     return None
 
 def get_city_from_object_name(object_name: str, settings: Dict[str, str]) -> Optional[str]:
@@ -356,32 +368,24 @@ def find_date_row_in_sheet(sheet, target_date: datetime) -> Optional[int]:
         # Получаем все значения из столбца B
         column_b = sheet.col_values(2)  # Столбец B = индекс 1
         
-        print(f"DEBUG: Ищем дату {target_date.strftime('%d.%m.%Y')} в {len(column_b)} строках столбца B")
-        
         for row_idx, date_str in enumerate(column_b, start=1):
             if not date_str:
                 continue
             
-            print(f"DEBUG: Строка {row_idx}: проверяем '{date_str}'")
-            
             # Парсим дату из ячейки
             parsed_date = parse_date(date_str)
             if parsed_date and parsed_date.date() == target_date.date():
-                print(f"DEBUG: Найдено совпадение в строке {row_idx}")
                 return row_idx
         
-        print(f"DEBUG: Дата {target_date.strftime('%d.%m.%Y')} не найдена")
         return None
     except Exception as e:
-        print(f"DEBUG: Ошибка при поиске даты: {str(e)}")
+        logger.error(f"Ошибка при поиске даты: {str(e)}")
         return None
 
 def write_data_to_sheet(sheet_url: str, sheet_name: str, processed_data: Dict[datetime, Dict[str, float]]):
     """Записывает обработанные данные в Google Sheets"""
     for attempt in range(MAX_RETRIES):
         try:
-            print(f"DEBUG: Записываем данные в {sheet_name} для {len(processed_data)} дат (попытка {attempt + 1})")
-            
             client = get_google_sheets_client()
             sheet_id = extract_sheet_id_from_url(sheet_url)
             spreadsheet = client.open_by_key(sheet_id)
@@ -393,7 +397,6 @@ def write_data_to_sheet(sheet_url: str, sheet_name: str, processed_data: Dict[da
             
             # Получаем все значения из столбца B одним запросом
             column_b = sheet.col_values(2)  # Столбец B = индекс 1
-            print(f"DEBUG: Получен столбец B с {len(column_b)} строками")
             
             # Задержка между запросами
             time.sleep(GOOGLE_API_DELAY)
@@ -407,8 +410,6 @@ def write_data_to_sheet(sheet_url: str, sheet_name: str, processed_data: Dict[da
                 parsed_date = parse_date(date_str)
                 if parsed_date:
                     date_to_row[parsed_date.date()] = row_idx
-            
-            print(f"DEBUG: Найдено {len(date_to_row)} дат в столбце B")
             
             # Подготавливаем данные для массового обновления
             updates = []
@@ -431,16 +432,13 @@ def write_data_to_sheet(sheet_url: str, sheet_name: str, processed_data: Dict[da
             
             # Выполняем массовое обновление
             if updates:
-                print(f"DEBUG: Выполняем {len(updates)} обновлений")
                 sheet.batch_update(updates)
-            else:
-                print("DEBUG: Нет данных для обновления")
             
             return  # Успешно завершили
                 
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
-                print(f"DEBUG: Попытка {attempt + 1} не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
+                logger.warning(f"Попытка {attempt + 1} не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
                 time.sleep(RETRY_DELAY)
             else:
                 raise Exception(f"Ошибка при записи данных в таблицу после {MAX_RETRIES} попыток: {str(e)}")
@@ -449,9 +447,6 @@ def process_xls_data(data: List[List[str]], settings: Dict[str, str]) -> Dict[st
     """Обрабатывает данные XLS и группирует по городам"""
     city_data = {}
     warnings = []
-    
-    print(f"DEBUG: Обрабатываем {len(data)} строк данных")
-    print(f"DEBUG: Настройки городов: {list(settings.keys())}")
     
     for row_idx, row in enumerate(data, start=1):
         if len(row) < 8:  # Нужно минимум 8 столбцов
@@ -463,8 +458,6 @@ def process_xls_data(data: List[List[str]], settings: Dict[str, str]) -> Dict[st
         check_out = row[2] if len(row) > 2 and row[2] else ""    # 3 столбец - выезд
         total_amount = row[6] if len(row) > 6 and row[6] else "" # 7 столбец - сумма
         
-        print(f"DEBUG: Строка {row_idx}: объект='{object_name}', заезд='{check_in}', выезд='{check_out}', сумма='{total_amount}'")
-        
         # Проверяем, что все необходимые поля заполнены
         if not object_name or not check_in or not check_out or not total_amount:
             warnings.append(f"Строка {row_idx}: Пропущена - не все поля заполнены")
@@ -472,7 +465,6 @@ def process_xls_data(data: List[List[str]], settings: Dict[str, str]) -> Dict[st
         
         # Получаем город из названия объекта
         city = get_city_from_object_name(object_name, settings)
-        print(f"DEBUG: Строка {row_idx}: найден город '{city}' для объекта '{object_name}'")
         
         if not city:
             continue  # Пропускаем строки без города из настроек
@@ -488,8 +480,6 @@ def process_xls_data(data: List[List[str]], settings: Dict[str, str]) -> Dict[st
             warnings.append(f"Строка {row_idx}: Ошибка расчёта КН/Дохода")
             continue
         
-        print(f"DEBUG: Строка {row_idx}: рассчитано {len(calculations)} дней для города {city}")
-        
         # Группируем данные по городу и дате
         if city not in city_data:
             city_data[city] = {}
@@ -500,10 +490,6 @@ def process_xls_data(data: List[List[str]], settings: Dict[str, str]) -> Dict[st
             
             city_data[city][date]['kn'] += kn
             city_data[city][date]['income'] += income
-    
-    print(f"DEBUG: Итоговые данные по городам: {list(city_data.keys())}")
-    for city, dates in city_data.items():
-        print(f"DEBUG: {city}: {len(dates)} дат")
     
     return city_data, warnings
 
@@ -538,23 +524,23 @@ def parse_excel_xml_2003(file_path: str) -> list:
 # Фоновая задача для обработки файла
 async def process_file_task(task_id: str, file_path: str):
     """Фоновая задача для обработки XLS файла"""
+    import asyncio
+    
     try:
-        # Инициализируем статус
-        task_status[task_id] = {
-            "status": "processing",
-            "progress": {"current": 0, "total": 15},
-            "errors": [],
-            "success": []
-        }
+        # Обновляем статус при начале обработки
+        task_status[task_id]["success"].append("Начинаем обработку файла...")
         
         # Загружаем настройки
         settings = load_settings()
+        task_status[task_id]["success"].append("Загружены настройки системы")
         
         # Парсим Excel файл
         data = parse_excel_xml_2003(file_path)
+        task_status[task_id]["success"].append(f"Файл Excel обработан - {len(data)} строк данных")
         
         # Обрабатываем данные XLS
         city_data, warnings = process_xls_data(data, settings)
+        task_status[task_id]["success"].append(f"Данные сгруппированы по городам - найдено {len(city_data)} городов с данными")
         
         # Получаем текущую дату в формате DDMMYY
         date_str = datetime.now().strftime("%d%m%y")
@@ -569,7 +555,6 @@ async def process_file_task(task_id: str, file_path: str):
         total_cities = len(cities)
         current_progress = 0
         errors = []
-        success = []
         
         # Добавляем предупреждения в ошибки
         for warning in warnings:
@@ -578,7 +563,6 @@ async def process_file_task(task_id: str, file_path: str):
         # Обновляем статус
         task_status[task_id]["progress"]["current"] = current_progress
         task_status[task_id]["errors"] = errors
-        task_status[task_id]["success"] = success
         
         # Обрабатываем каждый город
         for i, city in enumerate(cities, 1):
@@ -586,41 +570,58 @@ async def process_file_task(task_id: str, file_path: str):
                 if city in settings and settings[city]:
                     # Проверяем, есть ли данные для этого города
                     if city in city_data and city_data[city]:
+                        logger.info(f"Начинаем обработку города: {city}")
+                        task_status[task_id]["success"].append(f"Начинаем обработку города: {city}")
+                        
+                        # Обновляем статус после каждого шага
+                        task_status[task_id]["progress"]["current"] = current_progress
+                        task_status[task_id]["progress"]["current_city"] = city
+                        task_status[task_id]["errors"] = errors
+                        
                         # Создаем лист с датой
                         sheet_name = create_sheet_with_date(settings[city], date_str)
+                        task_status[task_id]["success"].append(f"Создан лист {sheet_name} для города {city}")
                         
                         # Записываем обработанные данные
                         write_data_to_sheet(settings[city], sheet_name, city_data[city])
                         
-                        success.append(f"✅ {city} - обработано {len(city_data[city])} дат")
+                        logger.info(f"Город {city} обработан успешно - {len(city_data[city])} дат")
+                        task_status[task_id]["success"].append(f"Город {city} обработан успешно - {len(city_data[city])} дат")
                     else:
-                        success.append(f"ℹ️ {city} - нет данных для обработки")
+                        logger.info(f"Город {city} - нет данных для обработки")
+                        task_status[task_id]["success"].append(f"Город {city} - нет данных для обработки")
                 else:
-                    errors.append({"city": city, "message": "❌ Ссылка на таблицу не настроена"})
+                    logger.warning(f"Город {city} - ссылка на таблицу не настроена")
+                    errors.append({"city": city, "message": "Ссылка на таблицу не настроена"})
             except Exception as e:
-                errors.append({"city": city, "message": f"❌ {str(e)}"})
+                logger.error(f"Ошибка при обработке города {city}: {str(e)}")
+                errors.append({"city": city, "message": str(e)})
             
             current_progress += 1
             task_status[task_id]["progress"]["current"] = current_progress
+            task_status[task_id]["progress"]["total"] = total_cities
+            task_status[task_id]["progress"]["current_city"] = city
             task_status[task_id]["errors"] = errors
-            task_status[task_id]["success"] = success
+
             
             # Добавляем задержку между обработкой городов для избежания превышения квоты
             if i < len(cities):  # Не делаем задержку после последнего города
-                print(f"DEBUG: Задержка {GOOGLE_API_DELAY * 2} сек перед обработкой следующего города")
-                time.sleep(GOOGLE_API_DELAY * 2)
+                await asyncio.sleep(GOOGLE_API_DELAY * 2)
         
         # Завершаем задачу
+        task_status[task_id]["success"].append("Обработка всех городов завершена")
         task_status[task_id]["status"] = "completed"
+
         
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"Ошибка в задаче {task_id}: {error_details}")  # Логируем для отладки
+        logger.error(f"Критическая ошибка в задаче {task_id}: {error_details}")
         task_status[task_id] = {
             "status": "failed",
             "error": str(e),
-            "error_details": error_details
+            "error_details": error_details,
+            "success": task_status.get(task_id, {}).get("success", []) + [f"Ошибка: {str(e)}"]
         }
     finally:
         # Удаляем временный файл
@@ -631,11 +632,19 @@ async def process_file_task(task_id: str, file_path: str):
 @app.post("/api/login", response_model=LoginResponse)
 async def login(request: LoginRequest):
     """Авторизация пользователя"""
-    if request.username in USERS and USERS[request.username] == request.password:
-        token = create_access_token(data={"sub": request.username})
-        return LoginResponse(token=token)
-    else:
-        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+    try:
+        if request.username in USERS and USERS[request.username] == request.password:
+            token = create_access_token(data={"sub": request.username})
+            logger.info(f"Успешная авторизация пользователя: {request.username}")
+            return LoginResponse(token=token)
+        else:
+            logger.warning(f"Неудачная попытка авторизации для пользователя: {request.username}")
+            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при авторизации: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при авторизации")
 
 @app.post("/api/upload")
 async def upload_file(
@@ -644,34 +653,49 @@ async def upload_file(
     current_user: str = Depends(get_current_user)
 ):
     """Загрузка Excel файла"""
-    if not (file.filename.endswith('.xls') or file.filename.endswith('.xlsx')):
-        raise HTTPException(status_code=400, detail="Поддерживаются только файлы .xls и .xlsx")
-    
-    # Создаем уникальный ID задачи
-    task_id = str(uuid.uuid4())
-    
-    # Сохраняем файл временно с правильным расширением
-    file_extension = '.xlsx' if file.filename.endswith('.xlsx') else '.xls'
-    file_path = f"temp_{task_id}{file_extension}"
-    with open(file_path, "wb") as buffer:
-        content = await file.read()
-        buffer.write(content)
-    
-    # Инициализируем статус задачи
-    task_status[task_id] = {
-        "status": "processing",
-        "progress": {"current": 0, "total": 15},
-        "errors": [],
-        "success": []
-    }
-    
-    print(f"DEBUG: Создана задача {task_id}")
-    print(f"DEBUG: Всего задач: {len(task_status)}")
-    
-    # Запускаем фоновую задачу
-    background_tasks.add_task(process_file_task, task_id, file_path)
-    
-    return {"task_id": task_id, "message": "Файл загружен и начата обработка"}
+    try:
+
+        
+        if not (file.filename.endswith('.xls') or file.filename.endswith('.xlsx')):
+            logger.warning(f"Попытка загрузки неподдерживаемого файла: {file.filename}")
+            raise HTTPException(status_code=400, detail="Поддерживаются только файлы .xls и .xlsx")
+        
+        # Создаем уникальный ID задачи
+        task_id = str(uuid.uuid4())
+        
+        # Сохраняем файл временно с правильным расширением
+        file_extension = '.xlsx' if file.filename.endswith('.xlsx') else '.xls'
+        file_path = f"temp_{task_id}{file_extension}"
+        
+        try:
+            with open(file_path, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении файла {file.filename}: {str(e)}")
+            raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
+        
+        # Инициализируем статус задачи
+        task_status[task_id] = {
+            "status": "processing",
+            "progress": {"current": 0, "total": 15},
+            "errors": [],
+            "success": ["Задача создана, ожидание начала обработки..."]
+        }
+        
+        logger.info(f"Создана задача {task_id} для файла {file.filename}")
+        
+        # Запускаем фоновую задачу в отдельном потоке
+        import asyncio
+        asyncio.create_task(process_file_task(task_id, file_path))
+        
+        return {"task_id": task_id, "message": "Файл загружен и начата обработка"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Неожиданная ошибка при загрузке файла: {str(e)}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
 
 @app.get("/api/status/{task_id}")
 async def get_task_status(
@@ -679,37 +703,55 @@ async def get_task_status(
     current_user: str = Depends(get_current_user)
 ):
     """Получение статуса обработки задачи"""
-    print(f"DEBUG: Запрос статуса для задачи {task_id}")
-    print(f"DEBUG: Доступные задачи: {list(task_status.keys())}")
-    
-    if task_id not in task_status:
-        print(f"DEBUG: Задача {task_id} не найдена")
-        raise HTTPException(status_code=404, detail="Задача не найдена")
-    
-    print(f"DEBUG: Возвращаем статус для задачи {task_id}: {task_status[task_id]}")
-    return task_status[task_id]
+    try:
+        # Быстрая проверка без блокировки
+        if task_id not in task_status:
+            logger.warning(f"Запрос статуса для несуществующей задачи {task_id}")
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        
+        # Возвращаем копию статуса, чтобы избежать блокировки
+        status_copy = task_status[task_id].copy()
+        return status_copy
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при получении статуса задачи {task_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при получении статуса задачи")
+
+
 
 @app.get("/api/settings")
 async def get_settings(current_user: str = Depends(get_current_user)):
     """Получение настроек"""
-    settings = load_settings()
-    return settings
+    try:
+        settings = load_settings()
+        return settings
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке настроек: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при загрузке настроек")
 
 @app.post("/api/settings")
 async def save_settings(
     settings: Dict[str, str],
     current_user: str = Depends(get_current_user)
 ):
-    logging.basicConfig(level=logging.INFO)
-    logging.info(f"Получены настройки: {settings}")
-    save_settings_to_file(settings)
-    return {"message": "Настройки сохранены"}
+    try:
+        logger.info(f"Сохранение настроек пользователем {current_user}")
+        save_settings_to_file(settings)
+        return {"message": "Настройки сохранены"}
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении настроек: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при сохранении настроек")
 
 @app.post("/api/clear-cache")
 async def clear_cache(current_user: str = Depends(get_current_user)):
     """Очищает кэш клиента Google Sheets"""
-    clear_google_client_cache()
-    return {"message": "Кэш очищен"}
+    try:
+        clear_google_client_cache()
+        return {"message": "Кэш очищен"}
+    except Exception as e:
+        logger.error(f"Ошибка при очистке кэша: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка при очистке кэша")
 
 @app.post("/api/clear-today-sheets")
 async def clear_today_sheets(current_user: str = Depends(get_current_user)):
@@ -739,6 +781,7 @@ async def clear_today_sheets(current_user: str = Depends(get_current_user)):
                     results.append(f"ℹ️ {city}: лист {date_str} не найден")
                     
             except Exception as e:
+                logger.error(f"Ошибка при очистке листа для города {city}: {str(e)}")
                 results.append(f"❌ {city}: ошибка - {str(e)}")
         
         return {
@@ -747,10 +790,16 @@ async def clear_today_sheets(current_user: str = Depends(get_current_user)):
         }
         
     except Exception as e:
+        logger.error(f"Ошибка при очистке листов: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Ошибка при очистке листов: {str(e)}")
 
 # Убираем SPA fallback роут, так как фронтенд теперь отдельный сервис
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(
+        app, 
+        host="0.0.0.0", 
+        port=8000,
+        loop="asyncio"
+    ) 

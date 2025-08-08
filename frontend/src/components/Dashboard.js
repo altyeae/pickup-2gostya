@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import API_CONFIG from '../config';
+import './Dashboard.css';
 
 const Dashboard = ({ onLogout }) => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -9,6 +10,9 @@ const Dashboard = ({ onLogout }) => {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [processingStatus, setProcessingStatus] = useState(null);
   const [error, setError] = useState('');
+  const [logTimes, setLogTimes] = useState({});
+  const [lastSuccessCount, setLastSuccessCount] = useState(0);
+  const [lastErrorsCount, setLastErrorsCount] = useState(0);
 
   // Список городов (используется в других компонентах)
   // eslint-disable-next-line no-unused-vars
@@ -26,6 +30,45 @@ const Dashboard = ({ onLogout }) => {
     }
   }, []);
 
+  // useEffect для обработки времени логов
+  useEffect(() => {
+    if (processingStatus && processingStatus.success) {
+      const currentSuccessCount = processingStatus.success.length;
+      
+      if (currentSuccessCount > lastSuccessCount) {
+        const newLogTimes = { ...logTimes };
+        
+                  // Добавляем время только для новых логов
+          processingStatus.success.slice(lastSuccessCount).forEach((log, index) => {
+            const actualIndex = lastSuccessCount + index;
+            const logKey = `success-${actualIndex}-${log}`;
+            newLogTimes[logKey] = new Date().toLocaleTimeString();
+          });
+        setLogTimes(newLogTimes);
+        setLastSuccessCount(currentSuccessCount);
+      }
+    }
+    
+    if (processingStatus && processingStatus.errors) {
+      const currentErrorsCount = processingStatus.errors.length;
+      
+      if (currentErrorsCount > lastErrorsCount) {
+        const newLogTimes = { ...logTimes };
+        
+        // Добавляем время только для новых ошибок
+        processingStatus.errors.slice(lastErrorsCount).forEach((error, index) => {
+          const actualIndex = lastErrorsCount + index;
+          const logKey = `error-${actualIndex}-${error.city}-${error.message}`;
+          newLogTimes[logKey] = new Date().toLocaleTimeString();
+        });
+        
+        
+        setLogTimes(newLogTimes);
+        setLastErrorsCount(currentErrorsCount);
+      }
+    }
+  }, [processingStatus, lastSuccessCount, lastErrorsCount, logTimes]);
+
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file && (file.type === 'application/vnd.ms-excel' || 
@@ -33,6 +76,8 @@ const Dashboard = ({ onLogout }) => {
                  file.name.endsWith('.xls') || file.name.endsWith('.xlsx'))) {
       setSelectedFile(file);
       setError('');
+      // Очищаем старый статус обработки при выборе нового файла
+      setProcessingStatus(null);
     } else {
       setError('Пожалуйста, выберите файл формата .xls или .xlsx');
       setSelectedFile(null);
@@ -47,6 +92,8 @@ const Dashboard = ({ onLogout }) => {
                  file.name.endsWith('.xls') || file.name.endsWith('.xlsx'))) {
       setSelectedFile(file);
       setError('');
+      // Очищаем старый статус обработки при выборе нового файла
+      setProcessingStatus(null);
     } else {
       setError('Пожалуйста, выберите файл формата .xls или .xlsx');
     }
@@ -65,23 +112,51 @@ const Dashboard = ({ onLogout }) => {
     setUploading(true);
     setError('');
     setUploadStatus('Идет загрузка файла...');
-    setProcessingStatus(null);
+    
+    // Создаем начальный статус для отображения блока прогресса
+    setProcessingStatus({
+      status: 'processing',
+      progress: { current: 0, total: 15 },
+      errors: [],
+      success: ['Загрузка файла...']
+    });
+    
+    // Сбрасываем счетчики для новой обработки
+    setLastSuccessCount(0);
+    setLastErrorsCount(0);
+    setLogTimes({});
 
     const formData = new FormData();
     formData.append('file', selectedFile);
 
     try {
+
+      
       const response = await axios.post(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.upload}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        timeout: 120000, // 2 минуты таймаут для больших файлов
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadStatus(`Загрузка файла... ${percentCompleted}%`);
+        },
       });
-
+      
       setUploadStatus('Файл загружен успешно');
       
       // Начинаем отслеживать статус обработки
-      if (response.data.task_id) {
+      if (response.data && response.data.task_id) {
+        localStorage.setItem('lastTaskId', response.data.task_id);
         trackProcessingStatus(response.data.task_id);
+      } else {
+        // Пробуем получить последний task_id из localStorage
+        const lastTaskId = localStorage.getItem('lastTaskId');
+        if (lastTaskId) {
+          trackProcessingStatus(lastTaskId);
+        } else {
+          setError('Ошибка: не получен ID задачи от сервера');
+        }
       }
     } catch (err) {
       if (err.response && err.response.data && err.response.data.detail) {
@@ -90,6 +165,7 @@ const Dashboard = ({ onLogout }) => {
         setError('Ошибка при загрузке файла');
       }
       setUploadStatus('Ошибка загрузки');
+      setProcessingStatus(null);
     } finally {
       setUploading(false);
     }
@@ -98,18 +174,36 @@ const Dashboard = ({ onLogout }) => {
   const trackProcessingStatus = async (taskId) => {
     const checkStatus = async () => {
       try {
-        const response = await axios.get(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.status}/${taskId}`);
-        const status = response.data;
+        const response = await axios.get(`${API_CONFIG.baseURL}${API_CONFIG.endpoints.status}/${taskId}`, {
+          timeout: 30000, // 30 секунд таймаут
+        });
         
+        const status = response.data;
+
+        
+        // Обновляем статус
         setProcessingStatus(status);
         
+        // Останавливаем опрос статуса при завершении обработки всех 15 городов
         if (status.status === 'completed' || status.status === 'failed') {
           return; // Останавливаем проверку
         }
         
-        // Проверяем снова через 2 секунды
-        setTimeout(checkStatus, 2000);
+        // Также останавливаем, если прогресс достиг максимума (15 городов)
+        if (status.progress && status.progress.current >= status.progress.total) {
+          return; // Останавливаем проверку
+        }
+        
+        // Продолжаем опрашивать каждые 500мс
+        const interval = status.status === 'processing' && status.progress?.current === 0 ? 300 : 500;
+        setTimeout(checkStatus, interval);
       } catch (err) {
+        // При ошибке таймаута продолжаем опрашивать
+        if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+          setTimeout(checkStatus, 2000);
+          return;
+        }
+        
         setError('Ошибка при получении статуса обработки');
       }
     };
@@ -165,49 +259,81 @@ const Dashboard = ({ onLogout }) => {
               >
                 {uploading ? 'Загрузка...' : 'Загрузить и обработать'}
               </button>
+              
+
             </div>
           )}
         </div>
 
-        {(uploadStatus || processingStatus) && (
+        {/* Блок прогресса в реальном времени */}
+        {processingStatus && (
           <div className="card">
-            <h2>Вывод</h2>
-            
-            {processingStatus && (
-              <div>
-                {processingStatus.status === 'failed' && processingStatus.error && (
-                  <div className="error" style={{ marginTop: '10px' }}>
-                    <strong>Ошибка:</strong> {processingStatus.error}
+
+            <div className="realtime-logs">
+              {processingStatus.progress && processingStatus.status === 'processing' && (
+                <div className="progress-info">
+                  <div className="progress-header">
+                    <span className="progress-text">
+                      {processingStatus.progress.current}/{processingStatus.progress.total} 
+                      {processingStatus.progress.current_city && (
+                        <span className="current-city"> - {processingStatus.progress.current_city}</span>
+                      )}
+                    </span>
+                    <span className="progress-percentage">
+                      {Math.round((processingStatus.progress.current / processingStatus.progress.total) * 100)}%
+                    </span>
                   </div>
-                )}
-                
-                {processingStatus.errors && processingStatus.errors.length > 0 && (
-                  <div className="status-list">
-                    <h4>Ошибки:</h4>
-                    {processingStatus.errors.map((error, index) => (
-                      <div key={index} className="status-item status-error">
-                        <span>{error.city}</span>
-                        <span>{error.message}</span>
-                      </div>
-                    ))}
+                  <div className="progress-bar">
+                    <div 
+                      className="progress-fill"
+                      style={{ 
+                        width: `${(processingStatus.progress.current / processingStatus.progress.total) * 100}%` 
+                      }}
+                    ></div>
                   </div>
-                )}
-                
-                {processingStatus.success && processingStatus.success.length > 0 && (
-                  <div className="status-list">
-                    <h4>Успешно обработано:</h4>
-                    {processingStatus.success.map((city, index) => (
-                      <div key={index} className="status-item status-success">
-                        <span>{city}</span>
-                        <span>✅</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                </div>
+              )}
+              
+              <div className="logs-container">
+                <div className="logs-list">
+                  {processingStatus.success && processingStatus.success.length > 0 ? (
+                    processingStatus.success.map((log, index) => {
+                      const timeKey = `success-${index}-${log}`;
+                      const time = logTimes[timeKey] || '--:--:--';
+
+                      return (
+                        <div key={index} className="log-item success">
+                          <span className="log-time">{time}</span>
+                          <span className="log-message">{log}</span>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="log-item">
+                      <span className="log-time">{new Date().toLocaleTimeString()}</span>
+                      <span className="log-message">Ожидание начала обработки...</span>
+                    </div>
+                  )}
+                  {processingStatus.errors && processingStatus.errors.map((error, index) => (
+                    <div key={index} className="log-item error">
+                      <span className="log-time">{logTimes[`error-${index}-${error.city}-${error.message}`] || '--:--:--'}</span>
+                      <span className="log-message">{error.city}: {error.message}</span>
+                    </div>
+                  ))}
+                  
+                  {processingStatus.status === 'failed' && processingStatus.error && (
+                    <div className="log-item error">
+                      <span className="log-time">{new Date().toLocaleTimeString()}</span>
+                      <span className="log-message">Критическая ошибка: {processingStatus.error}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )}
+
+
       </div>
     </div>
   );
