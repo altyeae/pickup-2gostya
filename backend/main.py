@@ -123,7 +123,7 @@ USERS = {
 task_status = {}
 
 # Путь к файлу настроек
-SETTINGS_FILE = "settings.json"
+SETTINGS_FILE = "/tmp/settings.json"
 
 # Модели данных
 class LoginRequest(BaseModel):

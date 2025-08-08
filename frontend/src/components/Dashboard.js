@@ -35,39 +35,41 @@ const Dashboard = ({ onLogout }) => {
     if (processingStatus && processingStatus.success) {
       const currentSuccessCount = processingStatus.success.length;
       
-      if (currentSuccessCount > lastSuccessCount) {
-        const newLogTimes = { ...logTimes };
-        
-                  // Добавляем время только для новых логов
-          processingStatus.success.slice(lastSuccessCount).forEach((log, index) => {
-            const actualIndex = lastSuccessCount + index;
-            const logKey = `success-${actualIndex}-${log}`;
-            newLogTimes[logKey] = new Date().toLocaleTimeString();
+              if (currentSuccessCount > lastSuccessCount) {
+          setLogTimes(prevLogTimes => {
+            const newLogTimes = { ...prevLogTimes };
+            
+            // Добавляем время только для новых логов
+            processingStatus.success.slice(lastSuccessCount).forEach((log, index) => {
+              const actualIndex = lastSuccessCount + index;
+              const logKey = `success-${actualIndex}-${log}`;
+              newLogTimes[logKey] = new Date().toLocaleTimeString();
+            });
+            return newLogTimes;
           });
-        setLogTimes(newLogTimes);
-        setLastSuccessCount(currentSuccessCount);
-      }
+          setLastSuccessCount(currentSuccessCount);
+        }
     }
     
     if (processingStatus && processingStatus.errors) {
       const currentErrorsCount = processingStatus.errors.length;
       
       if (currentErrorsCount > lastErrorsCount) {
-        const newLogTimes = { ...logTimes };
-        
-        // Добавляем время только для новых ошибок
-        processingStatus.errors.slice(lastErrorsCount).forEach((error, index) => {
-          const actualIndex = lastErrorsCount + index;
-          const logKey = `error-${actualIndex}-${error.city}-${error.message}`;
-          newLogTimes[logKey] = new Date().toLocaleTimeString();
+        setLogTimes(prevLogTimes => {
+          const newLogTimes = { ...prevLogTimes };
+          
+          // Добавляем время только для новых ошибок
+          processingStatus.errors.slice(lastErrorsCount).forEach((error, index) => {
+            const actualIndex = lastErrorsCount + index;
+            const logKey = `error-${actualIndex}-${error.city}-${error.message}`;
+            newLogTimes[logKey] = new Date().toLocaleTimeString();
+          });
+          return newLogTimes;
         });
-        
-        
-        setLogTimes(newLogTimes);
         setLastErrorsCount(currentErrorsCount);
       }
     }
-  }, [processingStatus, lastSuccessCount, lastErrorsCount, logTimes]);
+  }, [processingStatus, lastSuccessCount, lastErrorsCount]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
