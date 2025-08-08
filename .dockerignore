@@ -17,4 +17,7 @@ frontend/
 frontend/*
 package.json
 package-lock.json
-yarn.lock 
+yarn.lock
+render.yaml
+DEPLOYMENT.md
+build.sh 
