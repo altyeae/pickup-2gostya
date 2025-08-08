@@ -39,7 +39,8 @@ app = FastAPI(
 # Настройка CORS
 cors_origins = [
     "http://localhost:3000",
-    "https://pickup-2gostya.onrender.com"
+    "https://pickup-2gostya.onrender.com",
+    "https://*.railway.app"   # Разрешаем все поддомены Railway
 ]
 
 # Добавляем CORS_ORIGIN из переменной окружения, если она установлена

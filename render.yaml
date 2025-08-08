@@ -1,26 +1,5 @@
 services:
-  # Бэкенд сервис
-  - type: web
-    name: pickup-portcomfort-backend
-    env: python
-    plan: free
-    buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120 --timeout-graceful-shutdown 30
-    envVars:
-      - key: GOOGLE_CREDENTIALS
-        sync: false
-      - key: CORS_ORIGIN
-        value: https://pickup-2gostya.onrender.com
-      - key: GOOGLE_API_DELAY
-        value: "2.0"
-      - key: MAX_RETRIES
-        value: "5"
-      - key: RETRY_DELAY
-        value: "3.0"
-    healthCheckPath: /health
-    autoDeploy: true
-
-  # Фронтенд сервис
+  # Фронтенд сервис (бэкенд перенесен на Railway)
   - type: web
     name: pickup-2gostya
     env: static
@@ -28,4 +7,4 @@ services:
     staticPublishPath: frontend/build
     envVars:
       - key: REACT_APP_API_URL
-        value: https://pickup-portcomfort-backend.onrender.com 
+        value: https://pickup-portcomfort-backend.railway.app 
