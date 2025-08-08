@@ -36,14 +36,8 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Настройка CORS
-cors_origins = [
-    "http://localhost:3000",
-    "https://pickup-2gostya.onrender.com",
-    "https://*.railway.app",   # Разрешаем все поддомены Railway
-    "https://railway.com",     # Разрешаем основной домен Railway
-    "https://*.railway.com"    # Разрешаем все поддомены Railway
-]
+# Настройка CORS - временно разрешаем все домены для отладки
+cors_origins = ["*"]
 
 # Добавляем CORS_ORIGIN из переменной окружения, если она установлена
 cors_origin_env = os.getenv('CORS_ORIGIN')
@@ -74,12 +68,20 @@ RETRY_DELAY = float(os.getenv('RETRY_DELAY', '2.0'))  # Задержка меж�
 @app.get("/health")
 async def health_check():
     """Простой health check для Render.com"""
-    return {"status": "healthy", "message": "Backend is running", "timestamp": datetime.now().isoformat()}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={"status": "healthy", "message": "Backend is running", "timestamp": datetime.now().isoformat()},
+        headers={"Access-Control-Allow-Origin": "*"}
+    )
 
 @app.get("/")
 async def root():
     """Корневой эндпоинт для проверки доступности"""
-    return {"status": "ok", "message": "XLS Import API is running", "timestamp": datetime.now().isoformat()}
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={"status": "ok", "message": "XLS Import API is running", "timestamp": datetime.now().isoformat()},
+        headers={"Access-Control-Allow-Origin": "*"}
+    )
 
 # Обработчик для OPTIONS запросов (CORS preflight)
 @app.options("/{full_path:path}")
@@ -89,7 +91,7 @@ async def options_handler(full_path: str):
     return Response(
         content="OK",
         headers={
-            "Access-Control-Allow-Origin": "https://pickup-2gostya.onrender.com",
+            "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Credentials": "true",
@@ -660,7 +662,11 @@ async def login(request: LoginRequest):
         if request.username in USERS and USERS[request.username] == request.password:
             token = create_access_token(data={"sub": request.username})
             logger.info(f"Успешная авторизация пользователя: {request.username}")
-            return LoginResponse(token=token)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                content={"token": token},
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
         else:
             logger.warning(f"Неудачная попытка авторизации для пользователя: {request.username}")
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
