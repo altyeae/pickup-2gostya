@@ -7,4 +7,4 @@ services:
     staticPublishPath: frontend/build
     envVars:
       - key: REACT_APP_API_URL
-        value: https://pickup-portcomfort-backend.railway.app 
+        value: https://pickup-2gostya-production.up.railway.app 

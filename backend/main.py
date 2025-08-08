@@ -42,7 +42,8 @@ cors_origins = [
     "https://pickup-2gostya.onrender.com",
     "https://pickup-2gostya-production.up.railway.app",
     "https://*.railway.app",
-    "https://*.onrender.com"
+    "https://*.onrender.com",
+    "https://railway.com"
 ]
 
 # Добавляем CORS_ORIGIN из переменной окружения, если она установлена
