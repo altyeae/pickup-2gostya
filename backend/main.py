@@ -36,8 +36,14 @@ app = FastAPI(
     redoc_url=None
 )
 
-# Настройка CORS - временно разрешаем все домены для отладки
-cors_origins = ["*"]
+# Настройка CORS
+cors_origins = [
+    "http://localhost:3000",
+    "https://pickup-2gostya.onrender.com",
+    "https://pickup-2gostya-production.up.railway.app",
+    "https://*.railway.app",
+    "https://*.onrender.com"
+]
 
 # Добавляем CORS_ORIGIN из переменной окружения, если она установлена
 cors_origin_env = os.getenv('CORS_ORIGIN')
@@ -71,7 +77,7 @@ async def health_check():
     from fastapi.responses import JSONResponse
     return JSONResponse(
         content={"status": "healthy", "message": "Backend is running", "timestamp": datetime.now().isoformat()},
-        headers={"Access-Control-Allow-Origin": "*"}
+        headers={"Access-Control-Allow-Origin": "https://pickup-2gostya.onrender.com"}
     )
 
 @app.get("/")
@@ -80,7 +86,7 @@ async def root():
     from fastapi.responses import JSONResponse
     return JSONResponse(
         content={"status": "ok", "message": "XLS Import API is running", "timestamp": datetime.now().isoformat()},
-        headers={"Access-Control-Allow-Origin": "*"}
+        headers={"Access-Control-Allow-Origin": "https://pickup-2gostya.onrender.com"}
     )
 
 # Обработчик для OPTIONS запросов (CORS preflight)
@@ -91,7 +97,7 @@ async def options_handler(full_path: str):
     return Response(
         content="OK",
         headers={
-            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Origin": "https://pickup-2gostya.onrender.com",
             "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Credentials": "true",
@@ -665,7 +671,7 @@ async def login(request: LoginRequest):
             from fastapi.responses import JSONResponse
             return JSONResponse(
                 content={"token": token},
-                headers={"Access-Control-Allow-Origin": "*"}
+                headers={"Access-Control-Allow-Origin": "https://pickup-2gostya.onrender.com"}
             )
         else:
             logger.warning(f"Неудачная попытка авторизации для пользователя: {request.username}")
