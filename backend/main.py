@@ -40,7 +40,9 @@ app = FastAPI(
 cors_origins = [
     "http://localhost:3000",
     "https://pickup-2gostya.onrender.com",
-    "https://*.railway.app"   # Разрешаем все поддомены Railway
+    "https://*.railway.app",   # Разрешаем все поддомены Railway
+    "https://railway.com",     # Разрешаем основной домен Railway
+    "https://*.railway.com"    # Разрешаем все поддомены Railway
 ]
 
 # Добавляем CORS_ORIGIN из переменной окружения, если она установлена
@@ -52,7 +54,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=86400,  # Кэшируем preflight на 24 часа
@@ -83,7 +85,17 @@ async def root():
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     """Обработчик для CORS preflight запросов"""
-    return {"message": "OK"}
+    from fastapi.responses import Response
+    return Response(
+        content="OK",
+        headers={
+            "Access-Control-Allow-Origin": "https://pickup-2gostya.onrender.com",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
 
 # Тестовый эндпоинт для проверки CORS
 
