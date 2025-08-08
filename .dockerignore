@@ -12,4 +12,5 @@ coverage
 *.log
 venv/
 __pycache__/
-*.pyc 
+*.pyc
+frontend/ 
