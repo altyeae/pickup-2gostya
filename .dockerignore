@@ -20,4 +20,6 @@ package-lock.json
 yarn.lock
 render.yaml
 DEPLOYMENT.md
-build.sh 
+build.sh
+Procfile
+.railwayignore 
