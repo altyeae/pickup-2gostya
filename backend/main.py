@@ -53,6 +53,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,  # Кэшируем preflight на 24 часа
 )
 
 # Глобальный кэш для клиента Google Sheets
@@ -187,32 +189,38 @@ def get_google_sheets_client():
     if _google_client_cache and (current_time - _last_client_creation) < CLIENT_CACHE_TTL:
         return _google_client_cache
     
-    try:
-        scopes = [
-            'https://www.googleapis.com/auth/spreadsheets',
-            'https://www.googleapis.com/auth/drive'
-        ]
-        
-        # Сначала пробуем получить из переменной окружения
-        google_credentials = os.getenv('GOOGLE_CREDENTIALS')
-        if google_credentials:
-            import json
-            credentials_dict = json.loads(google_credentials)
-            credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
-        else:
-            credentials = Credentials.from_service_account_file('service-account.json', scopes=scopes)
-        
-        client = gspread.authorize(credentials)
-        
-        _google_client_cache = client
-        _last_client_creation = current_time
-        return client
-    except FileNotFoundError:
-        logger.error("Файл service-account.json не найден")
-        raise Exception("Файл service-account.json не найден")
-    except Exception as e:
-        logger.error(f"Ошибка при создании клиента Google Sheets: {str(e)}")
-        raise Exception(f"Ошибка при создании клиента Google Sheets: {str(e)}")
+    for attempt in range(MAX_RETRIES):
+        try:
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+            
+            # Сначала пробуем получить из переменной окружения
+            google_credentials = os.getenv('GOOGLE_CREDENTIALS')
+            if google_credentials:
+                import json
+                credentials_dict = json.loads(google_credentials)
+                credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
+            else:
+                credentials = Credentials.from_service_account_file('service-account.json', scopes=scopes)
+            
+            client = gspread.authorize(credentials)
+            
+            _google_client_cache = client
+            _last_client_creation = current_time
+            return client
+            
+        except FileNotFoundError:
+            logger.error("Файл service-account.json не найден")
+            raise Exception("Файл service-account.json не найден")
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                logger.warning(f"Попытка {attempt + 1} создания клиента не удалась, повторяем через {RETRY_DELAY} сек: {str(e)}")
+                time.sleep(RETRY_DELAY)
+            else:
+                logger.error(f"Ошибка при создании клиента Google Sheets после {MAX_RETRIES} попыток: {str(e)}")
+                raise Exception(f"Ошибка при создании клиента Google Sheets после {MAX_RETRIES} попыток: {str(e)}")
 
 def extract_sheet_id_from_url(url: str) -> str:
     """Извлекает ID таблицы из URL"""
@@ -596,6 +604,9 @@ async def process_file_task(task_id: str, file_path: str):
             except Exception as e:
                 logger.error(f"Ошибка при обработке города {city}: {str(e)}")
                 errors.append({"city": city, "message": str(e)})
+                
+                # Добавляем дополнительную задержку при ошибке
+                await asyncio.sleep(RETRY_DELAY)
             
             current_progress += 1
             task_status[task_id]["progress"]["current"] = current_progress
@@ -606,7 +617,7 @@ async def process_file_task(task_id: str, file_path: str):
             
             # Добавляем задержку между обработкой городов для избежания превышения квоты
             if i < len(cities):  # Не делаем задержку после последнего города
-                await asyncio.sleep(GOOGLE_API_DELAY * 2)
+                await asyncio.sleep(GOOGLE_API_DELAY * 3)  # Увеличиваем задержку
         
         # Завершаем задачу
         task_status[task_id]["success"].append("Обработка всех городов завершена")
@@ -801,5 +812,7 @@ if __name__ == "__main__":
         app, 
         host="0.0.0.0", 
         port=8000,
-        loop="asyncio"
+        loop="asyncio",
+        timeout_keep_alive=120,  # Увеличиваем keep-alive таймаут
+        timeout_graceful_shutdown=30  # Увеличиваем graceful shutdown таймаут
     ) 
