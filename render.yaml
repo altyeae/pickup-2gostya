@@ -18,7 +18,6 @@ services:
       - key: RETRY_DELAY
         value: "3.0"
     healthCheckPath: /health
-    healthCheckTimeout: 30
     autoDeploy: true
 
   # Фронтенд сервис
