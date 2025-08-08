@@ -1,4 +1,9 @@
-node_modules
+frontend/
+frontend/*
+package.json
+package-lock.json
+yarn.lock
+node_modules/
 npm-debug.log
 .git
 .gitignore
@@ -13,8 +18,3 @@ coverage
 venv/
 __pycache__/
 *.pyc
-frontend/
-frontend/*
-package.json
-package-lock.json
-yarn.lock 

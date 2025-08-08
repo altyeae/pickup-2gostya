@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120 --timeout-graceful-shutdown 30"
+
+[variables]
+PYTHON_VERSION = "3.11"
